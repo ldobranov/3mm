@@ -75,6 +75,9 @@
     }
   },
   "componentUpdates": {
+    "earlierResult": "Result for your earlier request:",
+    "notSent": "No request was sent. The browser could not save a request ID for this tab.",
+    "targetMissing": "The original target is not currently listed. Keep the request ID and refresh; no new request was sent.",
     "refused": "Not accepted; no update was scheduled. Refresh and review the current state.",
     "title": "Agent and application hosts",
     "help": "Prepare from this installed Core, then separately approve an exact component build. No downloads or dependency installation.",

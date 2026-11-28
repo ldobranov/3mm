@@ -35,9 +35,9 @@ from backend.system.updates.staging import (
 )
 from backend.accounts.dependencies import require_admin
 from backend.storage.sessions import get_db
-from components.system_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError
+from components.system_runtime.update_helper_client import ComponentUpdateNotAccepted, UpdateHelperClient, UpdateHelperError
 from backend.system.updates.platform_runtime import (
-    RuntimeUpdateStatus, RuntimePrepareRequest, RuntimeApplyRequest, RuntimeAccepted,
+    RuntimeUpdateStatus, RuntimePrepareRequest, RuntimeApplyRequest, RuntimeAccepted, ReceiptId,
 )
 
 router = APIRouter(prefix="/api/v1/system-updates", tags=["system-updates"])
@@ -45,11 +45,16 @@ from backend.system.updates.components_api import router as component_updates_ro
 router.include_router(component_updates_router)
 
 @router.get('/runtime', response_model=RuntimeUpdateStatus)
-def platform_runtime_status(response: Response, _admin: User = Depends(require_admin)):
+def platform_runtime_status(response: Response, admin: User = Depends(require_admin), receipt_id: ReceiptId = None):
     response.headers['Cache-Control'] = 'no-store'
     try:
-        value = UpdateHelperClient(get_settings().updates.helper_socket).platform_runtime_status()
-        return RuntimeUpdateStatus.model_validate(value)
+        helper = UpdateHelperClient(get_settings().updates.helper_socket)
+        result = helper.platform_runtime_status(receipt_id, admin.id) if receipt_id else helper.platform_runtime_status()
+        value = RuntimeUpdateStatus.model_validate(result)
+        if value.requested_receipt is not None and (value.requested_receipt.request_id != receipt_id
+                or value.requested_receipt.state not in {'succeeded', 'failed', 'recovery_required'}):
+            raise ValueError('Unexpected Runtime receipt')
+        return value
     except (UpdateHelperError, ValueError, KeyError):
         raise HTTPException(409, 'Runtime status is unavailable; Core administration remains available.') from None
 
@@ -59,6 +64,8 @@ def _runtime_operation(action, payload, admin, db):
     data.update(action=action, requested_by_user_id=admin.id)
     try:
         identifier = UpdateHelperClient(get_settings().updates.helper_socket).platform_runtime_operation(data)
+    except ComponentUpdateNotAccepted:
+        raise HTTPException(409, {'code': 'runtime_update_not_accepted', 'request_id': payload.request_id}) from None
     except (UpdateHelperError, ValueError, KeyError):
         raise HTTPException(409, 'Runtime operation could not be confirmed. Refresh its status; do not resend.') from None
     db.add(AuditLog(user_id=admin.id, action='PLATFORM_RUNTIME_OPERATION_ACCEPTED',
@@ -81,8 +88,8 @@ def apply_platform_runtime(payload: RuntimeApplyRequest,
         raise HTTPException(422, 'Confirm the exact Runtime build.')
     try:
         ensure_apply_is_allowed(get_settings().updates, maintenance_override=payload.maintenance_override)
-    except UpdatePolicyError as exc:
-        raise HTTPException(409, str(exc)) from None
+    except UpdatePolicyError:
+        raise HTTPException(409, {'code': 'runtime_update_not_accepted', 'request_id': payload.request_id}) from None
     return _runtime_operation('platform_runtime_apply', payload, admin, db)
 
 

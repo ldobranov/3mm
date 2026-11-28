@@ -20,6 +20,7 @@ function button(wrapper: ReturnType<typeof mount>, label: string) {
 
 describe('Platform Runtime update card', () => {
   beforeEach(() => {
+    sessionStorage.clear()
     vi.clearAllMocks()
     vi.useFakeTimers()
     http.get.mockResolvedValue({ data: response() })
@@ -184,6 +185,45 @@ describe('Platform Runtime update card', () => {
     },
   )
 
+  it('does not confirm an old review while status is being read or after that read fails', async () => {
+    http.get.mockResolvedValue({ data: response(true) })
+    const w = mount(PlatformRuntimeUpdates)
+    await flushPromises()
+    await button(w, 'Review Runtime update').trigger('click')
+    await w.find('dialog input[type=checkbox]').setValue(true)
+    let fail!: (reason: Error) => void
+    http.get.mockImplementationOnce(() => new Promise((_ok, reject) => { fail = reject }))
+    await button(w, 'Refresh status').trigger('click')
+    expect(button(w, 'Confirm once').attributes('disabled')).toBeDefined()
+    fail(new Error('helper unavailable'))
+    await flushPromises()
+    expect(w.findAll('.actions button')).toHaveLength(0)
+    expect((w.find('dialog input').element as HTMLInputElement).checked).toBe(false)
+    await button(w, 'Refresh status').trigger('click'); await flushPromises()
+    await w.find('dialog input').setValue(true)
+    expect(button(w, 'Confirm once').attributes('disabled')).toBeDefined()
+    expect(http.post).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('retains an observed queued request on reload until its terminal result is read', async () => {
+    const key = '3mm.pending.runtime-update.v1'
+    sessionStorage.setItem(key, PREPARED)
+    const operation = { request_id: PREPARED, action: 'platform_runtime_prepare', state: 'queued', reason: null, updated_at: 1 }
+    http.get.mockResolvedValue({ data: { ...response(), operation } })
+    let w = mount(PlatformRuntimeUpdates); await flushPromises()
+    expect(sessionStorage.getItem(key)).toBe(PREPARED)
+    w.unmount()
+    http.get.mockRejectedValueOnce(new Error('offline'))
+    w = mount(PlatformRuntimeUpdates); await flushPromises()
+    expect(w.text()).toContain(PREPARED)
+    http.get.mockResolvedValue({ data: { ...response(), operation: { ...operation, state: 'succeeded' } } })
+    await button(w, 'Refresh status').trigger('click'); await flushPromises()
+    expect(sessionStorage.getItem(key)).toBeNull()
+    expect(http.post).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
   it('reads state after a lost reply but never automatically resends or exposes backend errors', async () => {
     http.post.mockRejectedValue({ response: { data: { detail: 'password=private /root/path' } } })
     http.get.mockResolvedValue({ data: { ...response(), operation: { request_id: PREPARED,
@@ -198,6 +238,55 @@ describe('Platform Runtime update card', () => {
     await vi.advanceTimersByTimeAsync(15000); await flushPromises()
     expect(http.post).toHaveBeenCalledTimes(1)
     expect(button(wrapper, 'Prepare from installed Core').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it.each(['matched','missing','wrong-id','nonterminal'])('uses only a matching superseded final receipt (%s)', async kind => {
+    const key = '3mm.pending.runtime-update.v1'
+    sessionStorage.setItem(key, PREPARED)
+    const newer = { request_id: 'f'.repeat(32), action: 'platform_runtime_prepare', state: 'succeeded', reason: 'candidate_prepared', updated_at: 7 }
+    const receipt = kind === 'missing' ? null : { ...newer, request_id: kind === 'wrong-id' ? 'e'.repeat(32) : PREPARED,
+      state: kind === 'nonterminal' ? 'preparing' : 'failed', reason: 'preparation_failed' }
+    http.get.mockResolvedValue({ data: { ...response(), operation: newer, requested_receipt: receipt } })
+    const w = mount(PlatformRuntimeUpdates); await flushPromises()
+    expect(http.get).toHaveBeenCalledWith('/api/v1/system-updates/runtime', { params: { receipt_id: PREPARED } })
+    expect(w.text()).toContain(newer.request_id)
+    if (kind === 'matched') {
+      expect(w.text()).toContain('Result for your earlier request: Failed')
+      expect(w.text()).not.toContain('Outcome unconfirmed')
+      expect(sessionStorage.getItem(key)).toBeNull()
+    } else {
+      expect(w.text()).toContain('Outcome unconfirmed')
+      expect(sessionStorage.getItem(key)).toBe(PREPARED)
+    }
+    expect(http.post).not.toHaveBeenCalled(); w.unmount()
+  })
+
+  it.each([true,false])('unlocks only a refusal for the exact request, including after reopening (match=%s)',async match=>{
+    http.post.mockImplementation((_url, body)=>Promise.reject({response:{status:409,data:{detail:{
+      code:'runtime_update_not_accepted',request_id:match?body.request_id:'9'.repeat(32)}}}}))
+    let wrapper=mount(PlatformRuntimeUpdates);await flushPromises()
+    await button(wrapper,'Prepare from installed Core').trigger('click');await flushPromises()
+    const id=http.post.mock.calls[0]![1].request_id
+    if(match)expect(wrapper.text()).toContain('Not accepted')
+    wrapper.unmount();wrapper=mount(PlatformRuntimeUpdates);await flushPromises()
+    if(match) expect(button(wrapper,'Prepare from installed Core').attributes('disabled')).toBeUndefined()
+    else {
+      expect(wrapper.text()).toContain(id)
+      expect(button(wrapper,'Prepare from installed Core').attributes('disabled')).toBeDefined()
+      http.get.mockResolvedValue({data:{...response(),operation:{request_id:id,action:'platform_runtime_prepare',
+        state:'succeeded',reason:'candidate_prepared',updated_at:1}}})
+      await button(wrapper,'Refresh status').trigger('click');await flushPromises()
+      expect(button(wrapper,'Prepare from installed Core').attributes('disabled')).toBeUndefined()
+    }
+    expect(http.post).toHaveBeenCalledTimes(1);wrapper.unmount()
+  })
+
+  it('does not hand off a mutation when the request ID cannot be kept',async()=>{
+    vi.spyOn(Storage.prototype,'setItem').mockImplementation(()=>{throw new Error('disabled')})
+    const wrapper=mount(PlatformRuntimeUpdates);await flushPromises()
+    await button(wrapper,'Prepare from installed Core').trigger('click');await flushPromises()
+    expect(http.post).not.toHaveBeenCalled();expect(wrapper.text()).toContain('No request was sent')
     wrapper.unmount()
   })
 

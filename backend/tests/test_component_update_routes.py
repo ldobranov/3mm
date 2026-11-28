@@ -14,6 +14,30 @@ BASE = '/api/v1/system-updates/components'
 HOST = 'c'*24
 
 
+def test_historical_component_receipt_has_exact_target_and_cannot_cross_actors(api, monkeypatch):
+    client, db, admin, viewer, mutations = api
+    identifier='a'*32
+    owner=db.scalar(select(User.id).where(User.role=='admin'))
+    receipt=dict(request_id=identifier, component='agent', target_id='local', action='component_prepare',
+                 state='failed', reason='preparation_failed', updated_at=123)
+    seen=[]
+    def lookup(_self, kind, target, actor, request):
+        seen.append((kind,target,actor,request))
+        return {**status(kind,target),'requested_receipt':dict(receipt)}
+    monkeypatch.setattr(UpdateHelperClient,'component_status',lookup)
+    url=BASE+'/agent/local'; params={'receipt_id':identifier, 'requested_by_user_id':owner+1}
+    assert client.get(url,params=params).status_code==401
+    assert client.get(url,params=params,headers=viewer).status_code==403
+    assert client.get(url,params={'receipt_id':'not-an-id'},headers=admin).status_code==422
+    assert not seen
+    result=client.get(url,params=params,headers=admin)
+    assert result.json()['requested_receipt']==receipt and result.headers['cache-control']=='no-store'
+    assert seen==[('agent','local',owner,identifier)]
+    receipt.update(component='application_host', target_id=HOST)
+    assert client.get(url,params=params,headers=admin).status_code==409
+    assert not mutations and not db.scalars(select(AuditLog)).all()
+
+
 def status(component='agent', target='local'):
     return dict(component=component, target_id=target, current_build_id='a'*64, previous_build_id='b'*64,
         ready=True, recovery_required=False, candidate=None, operation=None)
@@ -117,7 +141,7 @@ def test_proven_refusal_is_distinct_from_lost_response(api,monkeypatch):
     def refused(*a):calls.append(1);raise ComponentUpdateNotAccepted('private preflight detail')
     monkeypatch.setattr(UpdateHelperClient,'component_operation',refused)
     response=client.post(BASE+'/agent/local/prepare',headers=admin,json=dict(request_id='a'*32,expected_operation_id=None))
-    assert response.status_code==409 and response.json()=={'detail':{'code':'component_update_not_accepted'}} and calls==[1]
+    assert response.status_code==409 and response.json()=={'detail':{'code':'component_update_not_accepted','request_id':'a'*32}} and calls==[1]
 
 
 def test_node_registry_is_read_only_scoped_and_excludes_revoked_or_local_devices(api):

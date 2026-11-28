@@ -41,13 +41,18 @@ class UpdateHelperClient:
         }
         self._request(payload)
 
-    def platform_runtime_status(self):
-        return self._request({'action': 'platform_runtime_status'}, expected_status='inspected')['runtime']
+    def platform_runtime_status(self, receipt_id=None, user_id=None):
+        from components.system_runtime.platform_runtime_updates import validate_request
+        payload = {'action': 'platform_runtime_status'}
+        if receipt_id is not None: payload.update(receipt_id=receipt_id, requested_by_user_id=user_id)
+        validate_request(payload)
+        return self._request(payload, expected_status='inspected')['runtime']
 
-    def component_status(self, component, target_id, user_id):
+    def component_status(self, component, target_id, user_id, receipt_id=None):
         from components.system_runtime.component_updates import validate_request
         payload = {'action': 'component_status', 'component': component, 'target_id': target_id,
                    'requested_by_user_id': user_id}
+        if receipt_id is not None: payload['receipt_id'] = receipt_id
         validate_request(payload)
         return self._request(payload, expected_status='inspected')['component']
 
@@ -447,8 +452,13 @@ class UpdateHelperClient:
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             raise UpdateHelperError("The system update helper is unavailable") from exc
         if not isinstance(result, dict) or result.get("ok") is not True:
-            if (type(payload.get('action')) is str and payload['action'].startswith('component_') and isinstance(result, dict)
-                    and result.get('error') == 'component_update_not_accepted'):
+            if (isinstance(result, dict) and result.get('ok') is False
+                    and payload.get('action') in ('platform_runtime_prepare', 'platform_runtime_apply', 'platform_runtime_recover')
+                    and result == {'ok': False, 'error': 'runtime_update_not_accepted', 'request_id': payload['request_id']}):
+                raise ComponentUpdateNotAccepted('Runtime request was refused before scheduling')
+            if (isinstance(result, dict) and result.get('ok') is False
+                    and payload.get('action') in ('component_prepare', 'component_apply', 'component_rollback', 'component_recover')
+                    and result == {'ok': False, 'error': 'component_update_not_accepted', 'request_id': payload['request_id']}):
                 raise ComponentUpdateNotAccepted('Component request was not accepted; refresh and review')
             if (isinstance(result, dict)
                     and result.get("error") == "portable_restore_incompatible"

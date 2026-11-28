@@ -9,6 +9,30 @@ from components.system_runtime.update_helper_client import UpdateHelperClient, U
 BASE = '/api/v1/system-updates/runtime'
 
 
+def test_historical_runtime_receipt_uses_the_current_admin_and_exact_id(api, monkeypatch):
+    client, db, admin, viewer, mutations = api
+    request_id = 'd'*32
+    actor = db.scalar(select(User.id).where(User.role == 'admin'))
+    receipt = dict(request_id=request_id, action='platform_runtime_prepare', state='succeeded',
+                   reason='candidate_prepared', updated_at=123)
+    calls = []
+    def lookup(_self, identifier, user):
+        calls.append((identifier, user))
+        return {**status(), 'requested_receipt': dict(receipt)}
+    monkeypatch.setattr(UpdateHelperClient, 'platform_runtime_status', lookup)
+    params={'receipt_id': request_id, 'requested_by_user_id': actor+1}
+    for headers, code in [({},401),(viewer,403)]:
+        assert client.get(BASE, params=params, headers=headers).status_code == code
+    assert client.get(BASE, params={'receipt_id':'invalid'}, headers=admin).status_code == 422
+    assert not calls
+    result=client.get(BASE, params=params, headers=admin)
+    assert result.status_code==200 and result.headers['cache-control']=='no-store'
+    assert result.json()['requested_receipt']==receipt and calls==[(request_id,actor)]
+    receipt['request_id']='c'*32
+    assert client.get(BASE, params=params, headers=admin).status_code == 409
+    assert not mutations and not db.scalars(select(AuditLog)).all()
+
+
 def status():
     return {'current_build_id': 'a'*64, 'previous_build_id': None,
         'ready': True, 'recovery_required': False, 'features': {'query_execution_contract': None},
@@ -74,7 +98,9 @@ def test_apply_requires_exact_confirmation_and_separate_policy_approval(api, mon
     from backend.system.updates.policy import UpdatePolicyError
     def deny(*args, **kwargs): raise UpdatePolicyError('Outside maintenance window')
     monkeypatch.setattr('backend.system.updates.api.ensure_apply_is_allowed', deny)
-    assert client.post(BASE+'/apply', headers=admin, json=payload).status_code == 409
+    refusal = client.post(BASE+'/apply', headers=admin, json=payload)
+    assert refusal.status_code == 409 and refusal.json()['detail'] == {
+        'code':'runtime_update_not_accepted','request_id':payload['request_id']}
     assert not calls
 
 
@@ -97,3 +123,14 @@ def test_helper_failure_is_redacted_and_not_automatically_retried(api, monkeypat
         json={'request_id':'a'*32,'expected_operation_id':None})
     assert response.status_code == 409 and len(attempts) == 1
     assert 'password' not in response.text and '/etc/private' not in response.text
+
+
+def test_confirmed_refusal_is_correlated_without_a_success_audit(api, monkeypatch):
+    from components.system_runtime.update_helper_client import ComponentUpdateNotAccepted
+    client, db, admin, _, _ = api
+    def refused(*args): raise ComponentUpdateNotAccepted('internal preflight detail')
+    monkeypatch.setattr(UpdateHelperClient, 'platform_runtime_operation', refused)
+    identifier='9'*32
+    res=client.post(BASE+'/prepare', headers=admin,json={'request_id':identifier,'expected_operation_id':None})
+    assert res.status_code==409 and res.json()=={'detail':{'code':'runtime_update_not_accepted','request_id':identifier}}
+    assert db.scalar(select(AuditLog).where(AuditLog.entity_name==identifier)) is None

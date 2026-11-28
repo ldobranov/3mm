@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
+import { isUpdateRefusal } from '@/utils/update-receipt'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiDialog from '@/components/ui/UiDialog.vue'
 
@@ -11,10 +12,12 @@ const text = (key: string, fallback: string) => t('runtimeUpdates.' + key, fallb
 type Operation = { request_id: string; action: string; state: string; reason: string | null; updated_at: number }
 type Candidate = { candidate_id: string; build_id: string; sha256: string; bytes: number; compatible: boolean; features: Record<string, number | null> }
 type Status = { current_build_id: string | null; previous_build_id: string | null; ready: boolean;
-  recovery_required: boolean; features: Record<string, number | null>; reason: string | null; candidate: Candidate | null; operation: Operation | null }
+  recovery_required: boolean; features: Record<string, number | null>; reason: string | null; candidate: Candidate | null; operation: Operation | null;
+  requested_receipt?: Operation | null }
 const status = ref<Status | null>(null)
 const loading = ref(false), sending = ref(false), unconfirmed = ref(false)
 const error = ref(''), requestId = ref('')
+const earlierResult = ref<Operation | null>(null)
 const visibleRequestId = computed(() => requestId.value || status.value?.operation?.request_id || '')
 const confirm = ref<'apply' | 'recover' | null>(null)
 const acknowledged = ref(false), maintenanceOverride = ref(false)
@@ -36,6 +39,13 @@ const features = ['query_execution_contract', 'connector_execution_contract', 'a
 const featureNames: Record<string, string> = { query_execution_contract: 'Application queries',
   connector_execution_contract: 'External connectors', application_response_contract: 'Application replies', event_delivery_contract: 'Event delivery' }
 let live = true, timer: ReturnType<typeof setTimeout> | null = null, polls = 0
+let awaitingResult = false
+const pendingKey = '3mm.pending.runtime-update.v1'
+
+function forgetPending(id: string) {
+  try { if (sessionStorage.getItem(pendingKey) === id) sessionStorage.removeItem(pendingKey) }
+  catch { /* The in-memory observation is still valid. */ }
+}
 
 function decode(value: unknown): Status {
   const s = value as Status
@@ -64,11 +74,22 @@ async function refresh() {
   if (loading.value) return
   loading.value = true
   try {
-    const response = await http.get('/api/v1/system-updates/runtime')
+    const lookup = awaitingResult ? requestId.value : ''
+    const url = '/api/v1/system-updates/runtime'
+    const response = lookup ? await http.get(url, { params: { receipt_id: lookup } }) : await http.get(url)
     if (!live) return
     status.value = decode(response.data)
     error.value = ''
-    if (requestId.value && status.value.operation?.request_id === requestId.value) unconfirmed.value = false
+    if (awaitingResult && status.value.operation?.request_id === requestId.value) {
+      unconfirmed.value = false
+      awaitingResult = busyStates.includes(status.value.operation.state)
+      if (!awaitingResult) forgetPending(requestId.value)
+    } else if (awaitingResult) {
+      const receipt = status.value.requested_receipt
+      if (receipt && receipt.request_id === lookup && ['succeeded', 'failed', 'recovery_required'].includes(receipt.state)) {
+        earlierResult.value = receipt; unconfirmed.value = awaitingResult = false; forgetPending(lookup)
+      } else unconfirmed.value = true
+    }
     // A refreshed denial consumes the acknowledgement even if eligibility later
     // returns. A new review is explicit; sending/unknown outcomes are not retries.
     if (confirm.value && !sending.value && !unconfirmed.value
@@ -78,7 +99,14 @@ async function refresh() {
       maintenanceOverride.value = false
     }
   } catch {
-    if (live) error.value = text('unavailable', 'Runtime status is unavailable. Other Core administration remains available.')
+    if (live) {
+      status.value = null
+      unconfirmed.value = awaitingResult
+      if (confirm.value) {
+        reviewInvalidated.value = true; acknowledged.value = false; maintenanceOverride.value = false
+      }
+      error.value = text('unavailable', 'Runtime status is unavailable. Other Core administration remains available.')
+    }
   } finally {
     loading.value = false
     schedule()
@@ -99,7 +127,7 @@ function openConfirmation(action: 'apply' | 'recover') {
 }
 
 async function submit(action: 'prepare' | 'apply' | 'recover') {
-  if (sending.value || !status.value || unconfirmed.value) return
+  if (loading.value || sending.value || !status.value || unconfirmed.value) return
   if (action === 'prepare' && !canPrepare.value || action === 'apply' && !canApply.value
     || action === 'recover' && (!recovery.value || busy.value)) return
   if (action !== 'prepare' && (!acknowledged.value
@@ -108,6 +136,7 @@ async function submit(action: 'prepare' | 'apply' | 'recover') {
   error.value = ''
   polls = 0
   let dispatched = false
+  let refused = false
   try {
     requestId.value = newId() // Works on LAN HTTP; never Math.random or an automatic retry.
     const payload: Record<string, unknown> = { request_id: requestId.value,
@@ -118,17 +147,27 @@ async function submit(action: 'prepare' | 'apply' | 'recover') {
         confirmation: 'UPDATE RUNTIME ' + candidate.build_id,
         maintenance_override: props.maintenanceOverrideRequired && maintenanceOverride.value })
     }
-    dispatched = true
+    // Store only the non-secret ID, never the request, confirmation or token.
+    sessionStorage.setItem(pendingKey, requestId.value)
+    earlierResult.value = null
+    dispatched = awaitingResult = true
     await http.post('/api/v1/system-updates/runtime/' + action, payload)
     if (live) { confirm.value = null; unconfirmed.value = true }
-  } catch {
+  } catch (failure) {
+    refused = dispatched && isUpdateRefusal(failure, 'runtime_update_not_accepted', requestId.value)
+    if (refused) { awaitingResult = false; forgetPending(requestId.value) }
     if (live) {
-      unconfirmed.value = dispatched
-      error.value = text('unconfirmed', 'Outcome unconfirmed. Keep the request ID and read status; do not resend.')
+      unconfirmed.value = dispatched && !refused
+      if (refused) {
+        confirm.value = null; acknowledged.value = false; maintenanceOverride.value = false
+      }
+      error.value = dispatched ? text('unconfirmed', 'Outcome unconfirmed. Keep the request ID and read status; do not resend.')
+        : t('componentUpdates.notSent', 'No request was sent. The browser could not save a request ID for this tab.')
     }
   } finally {
     sending.value = false
     if (live && dispatched) await refresh()
+    if (live && refused) error.value = t('componentUpdates.refused', 'Not accepted; no update was scheduled. Refresh and review the current state.')
   }
 }
 
@@ -151,7 +190,15 @@ function stateName(state: string) {
   return text('state.' + state, labels[state] || state)
 }
 
-onMounted(() => { void refresh() })
+onMounted(() => {
+  try {
+    const pending = sessionStorage.getItem(pendingKey)
+    if (pending && /^[a-f0-9]{32}$/.test(pending)) {
+      requestId.value = pending; awaitingResult = unconfirmed.value = true
+    }
+  } catch { /* A read-only status check still works without browser storage. */ }
+  void refresh()
+})
 onUnmounted(() => { live = false; if (timer) clearTimeout(timer) })
 </script>
 
@@ -166,6 +213,8 @@ onUnmounted(() => { live = false; if (timer) clearTimeout(timer) })
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <p v-if="unconfirmed" role="alert">{{ text('unconfirmed', 'Outcome unconfirmed. Keep the request ID and read status; do not resend.') }}</p>
     <p v-if="visibleRequestId">{{ text('requestId', 'Preserve request ID:') }} <code>{{ visibleRequestId }}</code></p>
+    <p v-if="earlierResult" role="status">{{ t('componentUpdates.earlierResult', 'Result for your earlier request:') }}
+      {{ stateName(earlierResult.state) }} · {{ reason(earlierResult.reason) }}</p>
     <template v-if="status">
       <dl>
         <dt>{{ text('current', 'Current build') }}</dt><dd><code>{{ status.current_build_id || '—' }}</code></dd>
@@ -174,7 +223,8 @@ onUnmounted(() => { live = false; if (timer) clearTimeout(timer) })
         <template v-for="feature in features" :key="feature"><dt>{{ text('feature.' + feature, featureNames[feature]!) }}</dt>
           <dd>{{ status.features[feature] ?? text('notAdvertised', 'Not advertised') }}</dd></template>
       </dl>
-      <p v-if="status.operation" role="status">{{ text('operation', 'Operation') }}: {{ stateName(status.operation.state) }} · {{ reason(status.operation.reason) }}</p>
+      <p v-if="status.operation" role="status">{{ text('operation', 'Operation') }}:
+        <code v-if="requestId && requestId !== status.operation.request_id">{{ status.operation.request_id }} · </code>{{ stateName(status.operation.state) }} · {{ reason(status.operation.reason) }}</p>
       <div v-if="status.candidate" class="candidate">
         <h3>{{ text('candidate', 'Prepared candidate') }}</h3>
         <code>{{ status.candidate.build_id }}</code>
@@ -187,9 +237,9 @@ onUnmounted(() => { live = false; if (timer) clearTimeout(timer) })
         <p v-else>{{ text('compatible', 'Candidate matches the current Core and Runtime selection. Activation still needs separate approval.') }}</p>
       </div>
       <div class="actions">
-        <UiButton :disabled="!canPrepare" @click="submit('prepare')">{{ text('prepare', 'Prepare from installed Core') }}</UiButton>
-        <UiButton variant="primary" :disabled="!canApply" @click="openConfirmation('apply')">{{ text('update', 'Review Runtime update') }}</UiButton>
-        <UiButton v-if="recovery" :disabled="busy || unconfirmed" @click="openConfirmation('recover')">{{ text('recover', 'Review interrupted-operation recovery') }}</UiButton>
+        <UiButton :disabled="loading || !canPrepare" @click="submit('prepare')">{{ text('prepare', 'Prepare from installed Core') }}</UiButton>
+        <UiButton variant="primary" :disabled="loading || !canApply" @click="openConfirmation('apply')">{{ text('update', 'Review Runtime update') }}</UiButton>
+        <UiButton v-if="recovery" :disabled="loading || busy || unconfirmed" @click="openConfirmation('recover')">{{ text('recover', 'Review interrupted-operation recovery') }}</UiButton>
       </div>
     </template>
     <p v-else-if="loading" role="status">{{ text('loading', 'Reading Runtime status…') }}</p>
@@ -201,7 +251,7 @@ onUnmounted(() => { live = false; if (timer) clearTimeout(timer) })
       <label v-if="confirm === 'apply' && maintenanceOverrideRequired" class="check"><input v-model="maintenanceOverride" type="checkbox" :disabled="sending">{{ text('override', 'I explicitly approve updating outside the maintenance window.') }}</label>
       <template #actions>
         <UiButton :disabled="sending" @click="confirm = null">{{ text('close', 'Close') }}</UiButton>
-        <UiButton variant="primary" :disabled="sending || !acknowledged || !reviewCurrent || !reviewActionAvailable || confirm === 'apply' && maintenanceOverrideRequired && !maintenanceOverride"
+        <UiButton variant="primary" :disabled="loading || sending || !acknowledged || !reviewCurrent || !reviewActionAvailable || confirm === 'apply' && maintenanceOverrideRequired && !maintenanceOverride"
           @click="submit(confirm === 'apply' ? 'apply' : 'recover')">{{ text('confirm', 'Confirm once') }}</UiButton>
       </template>
     </UiDialog>

@@ -13,6 +13,7 @@ from backend.system.updates.components import (
     ComponentApplyRequest, RuntimeAccepted,
 )
 from backend.system.updates.policy import UpdatePolicyError, ensure_apply_is_allowed
+from backend.system.updates.platform_runtime import ReceiptId
 from backend.accounts.dependencies import require_admin
 from backend.storage.sessions import get_db
 from components.system_runtime.update_helper_client import UpdateHelperClient, UpdateHelperError, ComponentUpdateNotAccepted
@@ -62,13 +63,19 @@ def nodes(response: Response, admin: User = Depends(require_admin), db: Session 
 
 @router.get('/{component}/{target_id}', response_model=ComponentUpdateStatus)
 def component_status(component: ComponentKind, target_id: str, response: Response,
-        admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+        admin: User = Depends(require_admin), db: Session = Depends(get_db), receipt_id: ReceiptId = None):
     response.headers['Cache-Control'] = 'no-store'
     target(component, target_id, db)
     try:
-        result = UpdateHelperClient(get_settings().updates.helper_socket).component_status(component, target_id, admin.id)
+        helper = UpdateHelperClient(get_settings().updates.helper_socket)
+        result = (helper.component_status(component, target_id, admin.id, receipt_id) if receipt_id
+                  else helper.component_status(component, target_id, admin.id))
         value = ComponentUpdateStatus.model_validate(result)
         if (value.component, value.target_id) != (component, target_id): raise ValueError('Target changed')
+        receipt = value.requested_receipt
+        if receipt is not None and ((receipt.component, receipt.target_id, receipt.request_id) != (component, target_id, receipt_id)
+                or receipt.state not in {'succeeded', 'failed', 'recovery_required'}):
+            raise ValueError('Unexpected component receipt')
         return value
     except (UpdateHelperError, ValueError, KeyError):
         raise HTTPException(409, 'Component status is unavailable; other administration remains available.') from None
@@ -81,13 +88,13 @@ def operation(action, component, target_id, payload, admin, db):
             raise HTTPException(422, 'Confirm the exact component, target and build.')
         try: ensure_apply_is_allowed(get_settings().updates, maintenance_override=payload.maintenance_override)
         except UpdatePolicyError:
-            raise HTTPException(409, {'code': 'component_update_not_accepted'}) from None
+            raise HTTPException(409, {'code': 'component_update_not_accepted', 'request_id': payload.request_id}) from None
     data = payload.model_dump(exclude={'maintenance_override'})
     data.update(action='component_' + action, component=component, target_id=target_id, requested_by_user_id=admin.id)
     try:
         identifier = UpdateHelperClient(get_settings().updates.helper_socket).component_operation(data)
     except ComponentUpdateNotAccepted:
-        raise HTTPException(409, {'code': 'component_update_not_accepted'}) from None
+        raise HTTPException(409, {'code': 'component_update_not_accepted', 'request_id': payload.request_id}) from None
     except (UpdateHelperError, ValueError, KeyError):
         raise HTTPException(409, 'Component operation is unconfirmed. Read its original status; do not resend.') from None
     db.add(AuditLog(user_id=admin.id, action='COMPONENT_OPERATION_ACCEPTED', entity_type=component,

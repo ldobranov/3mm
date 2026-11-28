@@ -47,6 +47,34 @@ def test_runtime_scheduler_only_launches_fixed_worker_and_component_paths():
     with pytest.raises(ValueError): boundary.schedule_platform_runtime('../../escape')
 
 
+def test_runtime_refusal_must_match_the_original_request(tmp_path, monkeypatch):
+    import json, socket
+    from components.system_runtime import platform_runtime_updates as runtime
+    from components.system_runtime.update_helper_client import ComponentUpdateNotAccepted, UpdateHelperClient, UpdateHelperError
+    class Workflow:
+        def __init__(self, **kwargs): pass
+        def queue(self, *_args): raise runtime.RuntimeNotAccepted('not public')
+    monkeypatch.setattr(runtime, 'RuntimeUpdates', Workflow)
+    monkeypatch.setattr(update_helper, '_service_ids', lambda *_: (1000,1000))
+    req=dict(action='platform_runtime_prepare', requested_by_user_id=1, request_id='a'*32, expected_operation_id=None)
+    reply=update_helper._handle_request(req, stage_root=tmp_path/'stage',state_root=tmp_path/'state',
+        allowlist=tmp_path/'allow',status_file=tmp_path/'status',relational_peer_uid=1000)
+    assert reply=={'ok':False,'error':'runtime_update_not_accepted','request_id':req['request_id']}
+    class Reply:
+        def __enter__(self): return self
+        def __exit__(self,*_): pass
+        def settimeout(self,*_): pass
+        def connect(self,*_): pass
+        def sendall(self,*_): pass
+        def recv(self,*_): return json.dumps(reply).encode()+b'\n'
+    monkeypatch.setattr(socket,'socket',lambda *_:Reply())
+    client=UpdateHelperClient(tmp_path/'socket')
+    with pytest.raises(ComponentUpdateNotAccepted): client.platform_runtime_operation(req)
+    reply['request_id']='b'*32
+    with pytest.raises(UpdateHelperError) as err: client.platform_runtime_operation(req)
+    assert not isinstance(err.value,ComponentUpdateNotAccepted)
+
+
 @pytest.mark.skipif(os.name != 'posix', reason='Real kernel Unix peer credentials')
 def test_runtime_socket_observes_kernel_core_uid_not_a_payload_claim(tmp_path, monkeypatch):
     import json

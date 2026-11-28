@@ -80,6 +80,25 @@ def workflow(tmp_path, request):
         payload=payload, prepare=prepare, component=component, target=target)
 
 
+def test_result_lookup_is_bound_to_actor_target_and_original_request(workflow):
+    x = workflow; first, second = 'a'*32, 'b'*32
+    x.prepare()
+    x.w.queue(x.payload(identifier=second, expected=first), lambda _: None)
+    journal = x.w.web/'operation.json'; before = journal.read_bytes()
+    def read(component=x.component, target=x.target, actor=1):
+        return x.w.status(component, target, receipt_id=first, actor_id=actor)
+    found = read()
+    assert found['operation']['request_id'] == second and found['operation']['state'] == 'queued'
+    receipt = found['requested_receipt']
+    assert set(receipt) == {'request_id','component','target_id','state','updated_at','action','reason'}
+    assert (receipt['request_id'], receipt['state'], receipt['reason']) == (first,'succeeded','candidate_prepared')
+    assert read(actor=2)['requested_receipt'] is None
+    x.w.adapter_factory = lambda component, target: x.other
+    other_kind, other_id = ('application_host', 'f'*24) if x.component == 'agent' else ('agent','local')
+    assert read(other_kind, other_id)['requested_receipt'] is None
+    assert journal.read_bytes() == before
+
+
 def test_status_and_prepare_do_not_switch_or_create_status_journals(workflow):
     x = workflow; old = x.adapter.pointer('current')
     assert x.w.status(x.component, x.target)['ready'] and not x.w.web.exists()
@@ -179,6 +198,22 @@ def test_proven_preflight_refusal_differs_from_uncertain_persistence(workflow,mo
     monkeypatch.setattr(x.w,'save_operation',lost_after_write)
     with pytest.raises(OSError): x.w.queue(x.payload(),lambda _:pytest.fail('must not schedule'))
     assert x.w.operation()['request_id']=='a'*32 and not x.adapter.calls
+
+
+def test_accepted_id_conflict_or_unreadable_receipt_is_not_a_negative_ack(workflow, monkeypatch):
+    x = workflow
+    submitted = []
+    x.w.queue(x.payload(), submitted.append)
+    with pytest.raises(ValueError) as conflict:
+        x.w.queue(x.payload(expected='c'*32), submitted.append)
+    assert not isinstance(conflict.value, ComponentNotAccepted)
+    assert x.w.operation()['state'] == 'queued' and submitted == ['a'*32]
+    def unavailable():
+        raise OSError('receipt unavailable')
+    monkeypatch.setattr(x.w, 'operation', unavailable)
+    with pytest.raises(OSError):
+        x.w.queue(x.payload(), submitted.append)
+    assert submitted == ['a'*32]
 
 
 def test_interrupted_prepare_requires_explicit_recovery_and_cleans_only_staging(workflow):

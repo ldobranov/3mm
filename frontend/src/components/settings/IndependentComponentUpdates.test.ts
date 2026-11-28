@@ -75,6 +75,22 @@ describe('explicit independent component controls', () => {
     await button(w,'Refresh status').trigger('click'); await flushPromises()
     expect(button(w,'Confirm once').attributes('disabled')).toBeDefined(); expect(http.post).not.toHaveBeenCalled(); w.unmount()
   })
+  it('requires a new review if reading the selected component fails before confirmation', async () => {
+    const w = mount(IndependentComponentUpdates); await flushPromises()
+    await button(w,'Review previous build').trigger('click'); await flushPromises()
+    await w.find('dialog input').setValue(true)
+    let fail!: (reason: Error) => void
+    http.get.mockImplementationOnce(() => new Promise((_ok, reject) => { fail = reject }))
+    await button(w,'Refresh status').trigger('click')
+    expect(button(w,'Confirm once').attributes('disabled')).toBeDefined()
+    fail(new Error('status unavailable')); await flushPromises()
+    expect(w.findAll('.actions button')).toHaveLength(0)
+    expect((w.find('dialog input').element as HTMLInputElement).checked).toBe(false)
+    await button(w,'Refresh status').trigger('click'); await flushPromises()
+    await w.find('dialog input').setValue(true)
+    expect(button(w,'Confirm once').attributes('disabled')).toBeDefined()
+    expect(http.post).not.toHaveBeenCalled(); w.unmount()
+  })
   it('reviews the exact previous build rather than treating rollback as recovery', async () => {
     const w = mount(IndependentComponentUpdates); await flushPromises()
     await button(w,'Review previous build').trigger('click'); await flushPromises()
@@ -95,7 +111,7 @@ describe('explicit independent component controls', () => {
     expect(http.get).toHaveBeenCalledTimes(count); expect(http.post).toHaveBeenCalledOnce(); w.unmount()
   })
   it('releases only an explicitly refused request, without automatically retrying it',async()=>{
-    http.post.mockRejectedValue({response:{data:{detail:{code:'component_update_not_accepted'}}}})
+    http.post.mockImplementation(async (_url, body) => {throw {response:{status:409,data:{detail:{code:'component_update_not_accepted',request_id:body.request_id}}}}})
     const w=mount(IndependentComponentUpdates);await flushPromises()
     await button(w,'Prepare from installed Core').trigger('click');await flushPromises()
     expect(sessionStorage.getItem('3mm-component-update-pending')).toBeNull()
@@ -103,12 +119,58 @@ describe('explicit independent component controls', () => {
     expect(button(w,'Prepare from installed Core').attributes('disabled')).toBeUndefined()
     await vi.advanceTimersByTimeAsync(10000);expect(http.post).toHaveBeenCalledOnce();w.unmount()
   })
+  it.each([[409, 'a different request'], [409, undefined], [503, 'same']])('keeps an uncorrelated refusal pending (%s, %s)', async (status, id) => {
+    http.post.mockImplementation(async (_url, body) => {throw {response:{status,data:{detail:{code:'component_update_not_accepted',request_id:id==='same'?body.request_id:id}}}}})
+    const w=mount(IndependentComponentUpdates);await flushPromises()
+    await button(w,'Prepare from installed Core').trigger('click');await flushPromises()
+    expect(w.text()).toContain('Outcome unconfirmed')
+    const pending=JSON.parse(sessionStorage.getItem('3mm-component-update-pending')!)
+    expect(pending.request_id).toBe(http.post.mock.calls[0]![1].request_id)
+    expect(button(w,'Prepare from installed Core').attributes('disabled')).toBeDefined()
+    expect(http.post).toHaveBeenCalledOnce();w.unmount()
+  })
   it('reads the original accepted result to release the pending-request fence', async () => {
     sessionStorage.setItem('3mm-component-update-pending',JSON.stringify({ target:'agent/local', request_id:ID }))
     data.operation = { request_id: ID, component:'agent', target_id:'local', state:'succeeded', reason:'candidate_prepared' }
     const w = mount(IndependentComponentUpdates); await flushPromises()
     expect(button(w,'Prepare from installed Core').attributes('disabled')).toBeUndefined()
     expect(sessionStorage.getItem('3mm-component-update-pending')).toBeNull(); w.unmount()
+  })
+  it.each([true,false])('accepts a historical result only for the recorded target (matches=%s)', async match => {
+    const key='3mm-component-update-pending'
+    sessionStorage.setItem(key,JSON.stringify({target:'agent/local',request_id:ID}))
+    data.operation={request_id:'e'.repeat(32),component:'agent',target_id:'local',state:'queued',reason:null}
+    const receipt={request_id:ID,component:match?'agent':'application_host',target_id:match?'local':HOST,
+      state:'succeeded',reason:'candidate_prepared'}
+    http.get.mockImplementation(async (url:string) => ({data:url.endsWith('/targets')?{targets}:{...data,requested_receipt:receipt}}))
+    const w=mount(IndependentComponentUpdates);await flushPromises()
+    expect(http.get).toHaveBeenCalledWith('/api/v1/system-updates/components/agent/local',{params:{receipt_id:ID}})
+    expect(w.text().includes('Result for your earlier request:')).toBe(match)
+    expect(w.text().includes('Outcome unconfirmed')).toBe(!match)
+    expect(sessionStorage.getItem(key)===null).toBe(match)
+    expect(http.post).not.toHaveBeenCalled();w.unmount()
+  })
+  it('keeps the original ID when its target is absent and offers a read-only refresh', async () => {
+    const saved=JSON.stringify({target:'application_host/'+HOST,request_id:ID})
+    sessionStorage.setItem('3mm-component-update-pending',saved)
+    http.get.mockResolvedValueOnce({data:{targets:[targets[0]]}})
+    const w=mount(IndependentComponentUpdates);await flushPromises()
+    expect(w.text()).toContain(ID);expect(w.text()).toContain('original target is not currently listed')
+    expect(http.get).toHaveBeenCalledTimes(1)
+    expect(w.findAll('button').some(b=>b.text()==='Prepare from installed Core')).toBe(false)
+    http.get.mockResolvedValueOnce({data:{targets}}).mockResolvedValueOnce({data:{
+      ...response(),component:'application_host',target_id:HOST,operation:{request_id:ID,component:'application_host',target_id:HOST,state:'succeeded',reason:'candidate_prepared'}
+    }})
+    await button(w,'Refresh status').trigger('click');await flushPromises()
+    expect(http.get.mock.lastCall?.[0]).toBe('/api/v1/system-updates/components/application_host/'+HOST)
+    expect(sessionStorage.getItem('3mm-component-update-pending')).toBeNull();expect(http.post).not.toHaveBeenCalled();w.unmount()
+  })
+  it('never submits when tab storage will not retain an ID', async () => {
+    const w=mount(IndependentComponentUpdates);await flushPromises()
+    vi.spyOn(Storage.prototype,'setItem').mockImplementation(()=>{throw new Error('unavailable')})
+    await button(w,'Prepare from installed Core').trigger('click');await flushPromises()
+    expect(http.post).not.toHaveBeenCalled();expect(w.text()).toContain('No request was sent')
+    expect(w.text()).not.toContain('Outcome unconfirmed');w.unmount()
   })
   it('requires explicit recovery for the original target and does not replay apply', async () => {
     data.recovery_required = true

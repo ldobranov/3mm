@@ -509,11 +509,12 @@ def _handle_request(
             workflow = ComponentUpdates(database=application_database,
                 worker_active=selected.component_update_worker_active)
             if payload['action'] == 'component_status':
-                return {'ok': True, 'status': 'inspected', 'component': workflow.status(payload['component'], payload['target_id'])}
+                lookup = {'receipt_id': payload['receipt_id'], 'actor_id': payload['requested_by_user_id']} if 'receipt_id' in payload else {}
+                return {'ok': True, 'status': 'inspected', 'component': workflow.status(payload['component'], payload['target_id'], **lookup)}
             result = workflow.queue(payload, selected.schedule_component_update)
             return {'ok': True, 'status': 'queued', 'request_id': result['request_id']}
         except ComponentNotAccepted:
-            return {'ok': False, 'error': 'component_update_not_accepted'}
+            return {'ok': False, 'error': 'component_update_not_accepted', 'request_id': payload['request_id']}
         except (OSError, ValueError, KeyError, RuntimeError, TypeError, OverflowError, sqlite3.Error, subprocess.SubprocessError):
             return {'ok': False, 'error': 'component_update_unavailable'}
     from components.system_runtime.hardware_interfaces import ACTIONS as HARDWARE_ACTIONS
@@ -538,7 +539,7 @@ def _handle_request(
             return {'ok': False, 'error': 'hardware_interfaces_unavailable'}
     from components.system_runtime.platform_runtime_updates import ACTIONS as RUNTIME_UPDATE_ACTIONS
     if payload['action'] in RUNTIME_UPDATE_ACTIONS:
-        from components.system_runtime.platform_runtime_updates import RuntimeUpdates, validate_request
+        from components.system_runtime.platform_runtime_updates import RuntimeNotAccepted, RuntimeUpdates, validate_request
         try:
             validate_request(payload)
             core_uid, _ = _service_ids(service_user, service_group)
@@ -547,9 +548,12 @@ def _handle_request(
             selected = boundary or UpdateMutationBoundary()
             workflow = RuntimeUpdates(worker_active=selected.platform_runtime_worker_active)
             if payload['action'] == 'platform_runtime_status':
-                return {'ok': True, 'status': 'inspected', 'runtime': workflow.status()}
+                lookup = {'receipt_id': payload['receipt_id'], 'actor_id': payload['requested_by_user_id']} if 'receipt_id' in payload else {}
+                return {'ok': True, 'status': 'inspected', 'runtime': workflow.status(**lookup)}
             operation = workflow.queue(payload, selected.schedule_platform_runtime)
             return {'ok': True, 'status': 'queued', 'request_id': operation['request_id']}
+        except RuntimeNotAccepted:
+            return {'ok': False, 'error': 'runtime_update_not_accepted', 'request_id': payload['request_id']}
         except (OSError, ValueError, KeyError, RuntimeError, TypeError, OverflowError, subprocess.SubprocessError):
             return {'ok': False, 'error': 'runtime_update_unavailable'}
     if (type(payload) is dict and type(payload.get("action")) is str

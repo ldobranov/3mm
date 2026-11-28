@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 from deployment.component_store import _write
 from deployment.platform_runtime_component import INPUTS, RuntimeStore, build_component
-from components.system_runtime.platform_runtime_updates import RuntimeUpdates, validate_request
+from components.system_runtime.platform_runtime_updates import RuntimeNotAccepted, RuntimeUpdates, validate_request
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='POSIX root-helper locks and immutable Runtime store')
 ROOT = Path(__file__).resolve().parents[3]
@@ -64,6 +64,41 @@ def request(action='prepare', identifier='a'*32, previous=None, candidate=None):
         result.update(candidate_id=candidate['candidate_id'], build_id=candidate['build_id'],
             confirmation='UPDATE RUNTIME ' + candidate['build_id'])
     return result
+
+
+def test_read_original_terminal_receipt_after_a_later_request_without_replay(workflow):
+    x = workflow; old, new = 'a'*32, 'b'*32
+    scheduled = []
+    x.w.queue(request(identifier=old), scheduled.append)
+    x.w.execute(old)
+    x.w.queue(request(identifier=new, previous=old), scheduled.append)
+    journal = x.w.web/'operation.json'; before = journal.read_bytes()
+    result = x.w.status(receipt_id=old, actor_id=7)
+    assert result['operation']['request_id'] == new and result['operation']['state'] == 'queued'
+    assert result['requested_receipt'] == dict(request_id=old, action='platform_runtime_prepare',
+        state='succeeded', reason='candidate_prepared', updated_at=result['requested_receipt']['updated_at'])
+    assert x.w.status(receipt_id=old, actor_id=2)['requested_receipt'] is None
+    assert x.w.status(receipt_id='c'*32, actor_id=7)['requested_receipt'] is None
+    assert not x.w.status().get('requested_receipt')
+    assert journal.read_bytes() == before
+    with pytest.raises(ValueError):
+        x.w.queue(request(identifier=old, previous=new), scheduled.append)
+    assert journal.read_bytes() == before and scheduled == [old, new]
+
+
+def test_receipt_window_is_bounded_and_eviction_is_not_a_negative_receipt(workflow):
+    from components.system_runtime.platform_runtime_updates import MAX_PRIOR_RECEIPTS
+    x = workflow; ids = [f'{i:032x}' for i in range(MAX_PRIOR_RECEIPTS + 3)]
+    for index, identifier in enumerate(ids):
+        queued = x.w.queue(request(identifier=identifier, previous=ids[index-1] if index else None), lambda _: None)
+        # Exercise journal rotation, not the component build a dozen times.
+        x.w.save_operation(queued, 'failed', 'preparation_failed')
+    saved = x.w.operation()['prior_receipts']
+    assert [r['request_id'] for r in saved] == ids[-MAX_PRIOR_RECEIPTS-1:-1]
+    assert all(set(r) == {*x.w.receipt_fields, 'requested_by_user_id'} for r in saved)
+    missing = x.w.status(receipt_id=ids[0], actor_id=7)
+    assert missing['requested_receipt'] is None and not missing['recovery_required']
+    assert x.w.status(receipt_id=ids[-2], actor_id=7)['requested_receipt']['reason'] == 'preparation_failed'
 
 
 def prepare(x):
@@ -119,6 +154,21 @@ def test_worker_can_finish_preparation_before_scheduler_returns(workflow):
     assert receipt['request_id'] == intent['request_id']
     assert workflow.w.queue(intent, schedule)['reason'] == 'candidate_prepared'
     assert calls == [intent['request_id']] and not workflow.control.calls
+
+
+def test_refusal_only_before_persisting_the_exact_request(workflow, monkeypatch):
+    x = workflow
+    with pytest.raises(RuntimeNotAccepted):
+        x.w.queue(request(previous='f'*32),lambda _:pytest.fail('not eligible'))
+    assert x.w.operation() is None
+    save=x.w.save_operation
+    def committed_but_no_ack(record,state,*args):
+        save(record,state,*args)
+        raise OSError('lost write acknowledgement')
+    monkeypatch.setattr(x.w,'save_operation',committed_but_no_ack)
+    with pytest.raises(OSError):
+        x.w.queue(request(),lambda _:pytest.fail('not scheduled'))
+    assert x.w.operation()['request_id']==request()['request_id']
 
 
 @pytest.mark.parametrize('fault', ['core-generation', 'runtime-pointer', 'candidate-id', 'confirmation'])

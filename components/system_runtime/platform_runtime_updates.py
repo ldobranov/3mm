@@ -2,7 +2,8 @@
 
 No uploads, URLs, caller paths, dependency installation, grants or Core restart.
 Preparation builds the immutable installed release; execution reuses RuntimeStore.
-One durable operation and one candidate are retained. Lost replies are not retries.
+One active operation and one candidate; a bounded list of superseded receipts
+can answer an exact read without replaying a lost request.
 """
 from __future__ import annotations
 
@@ -31,6 +32,11 @@ HEX64 = re.compile(r'^[0-9a-f]{64}$')
 FEATURES = ('authority_contract', 'query_execution_contract', 'connector_execution_contract',
     'application_response_contract', 'public_web_contract', 'event_delivery_contract')
 BUSY = frozenset({'queued', 'preparing', 'applying', 'recovering'})
+MAX_PRIOR_RECEIPTS = 8
+
+
+class RuntimeNotAccepted(ValueError):
+    """A new request was refused before its durable acceptance."""
 
 
 def validate_request(payload):
@@ -38,7 +44,10 @@ def validate_request(payload):
         raise ValueError('Invalid Runtime request')
     action = payload['action']
     if action == 'platform_runtime_status':
-        if set(payload) != {'action'}:
+        if set(payload) != {'action'} and not (
+                set(payload) == {'action', 'receipt_id', 'requested_by_user_id'}
+                and type(payload['receipt_id']) is str and HEX32.fullmatch(payload['receipt_id'])
+                and type(payload['requested_by_user_id']) is int and payload['requested_by_user_id'] > 0):
             raise ValueError('Invalid Runtime status request')
         return payload
     fields = {'action', 'request_id', 'expected_operation_id', 'requested_by_user_id'}
@@ -60,6 +69,8 @@ def validate_request(payload):
 
 
 class RuntimeUpdates:
+    receipt_fields = ('request_id', 'action', 'state', 'reason', 'updated_at')
+
     def __init__(self, *, source=Path('/opt/3mm/current'), root=ROOT, state=STATE,
                  fingerprint=core_fingerprint, probe=runtime_health, control=None,
                  builder=build_component, worker_active=None, enforce=True,
@@ -141,6 +152,37 @@ class RuntimeUpdates:
         _write(self.web / 'operation.json', json.dumps(operation, sort_keys=True).encode())
         return operation
 
+    def _prior(self, operation):
+        rows = operation.get('prior_receipts', []) if operation else []
+        fields = {*self.receipt_fields, 'requested_by_user_id'}
+        if (not isinstance(rows, list) or len(rows) > MAX_PRIOR_RECEIPTS
+                or any(not isinstance(row, dict) or set(row) != fields
+                       or type(row['request_id']) is not str or not HEX32.fullmatch(row['request_id'])
+                       or type(row['requested_by_user_id']) is not int or row['requested_by_user_id'] <= 0
+                       for row in rows)):
+            raise ValueError('Invalid prior update receipts')
+        return rows
+
+    def _new_queue_record(self, record, old):
+        if not old:
+            return self.save_operation(record, 'queued')
+        # Only public result metadata and its local owner survive replacement.
+        # Never retain confirmations, build paths, fingerprints or request bodies.
+        prior = [*self._prior(old), {k: old[k] for k in (*self.receipt_fields, 'requested_by_user_id')}]
+        return self.save_operation({**record, 'prior_receipts': prior[-MAX_PRIOR_RECEIPTS:]}, 'queued')
+
+    def _requested_receipt(self, operation, receipt_id, actor_id, *, target=None):
+        if receipt_id is None:
+            return {}
+        if type(receipt_id) is not str or not HEX32.fullmatch(receipt_id) or type(actor_id) is not int or actor_id <= 0:
+            raise ValueError('Invalid receipt lookup')
+        for row in self._prior(operation):
+            if (row['request_id'] == receipt_id and row['requested_by_user_id'] == actor_id
+                    and (target is None or (row['component'], row['target_id']) == target)
+                    and row['state'] in {'succeeded', 'failed', 'recovery_required'}):
+                return {'requested_receipt': {k: row[k] for k in self.receipt_fields}}
+        return {'requested_receipt': None}
+
     @contextmanager
     def locked(self):
         import fcntl
@@ -166,7 +208,7 @@ class RuntimeUpdates:
         path = self.state / 'transaction.json'
         return path.exists() or path.is_symlink()
 
-    def status(self):
+    def status(self, *, receipt_id=None, actor_id=None):
         # Read-only: no directory, lock, candidate, service or grant creation.
         current = previous = None
         ready, reason, features = False, None, {}
@@ -195,8 +237,7 @@ class RuntimeUpdates:
         interrupted = self.interrupted(operation)
         requires_recovery = bool(interrupted or operation and operation['state'] == 'recovery_required'
             or self.pending_transaction() and not (operation and operation['state'] in BUSY and not interrupted))
-        public_operation = None if operation is None else {key: operation[key] for key in
-            ('request_id', 'action', 'state', 'reason', 'updated_at')}
+        public_operation = None if operation is None else {key: operation[key] for key in self.receipt_fields}
         if interrupted:
             public_operation.update(state='recovery_required', reason='worker_interrupted')
         public_candidate = None if candidate is None else {key: candidate[key] for key in
@@ -206,7 +247,7 @@ class RuntimeUpdates:
         return {'current_build_id': current, 'previous_build_id': previous,
             'ready': ready, 'features': features, 'reason': reason,
             'candidate': public_candidate, 'operation': public_operation,
-            'recovery_required': requires_recovery}
+            'recovery_required': requires_recovery, **self._requested_receipt(operation, receipt_id, actor_id)}
 
     def queue(self, payload, scheduler):
         validate_request(payload)
@@ -217,33 +258,38 @@ class RuntimeUpdates:
                 if old['request_digest'] != digest:
                     raise ValueError('Runtime request ID conflict')
                 return old  # Same accepted request, never schedule it twice.
+            if any(row['request_id'] == payload['request_id'] for row in self._prior(old)):
+                raise ValueError('Previously accepted Runtime request; read its receipt')
             if payload['expected_operation_id'] != (old['request_id'] if old else None):
-                raise ValueError('Runtime operation changed; refresh')
+                raise RuntimeNotAccepted('Runtime operation changed; refresh')
             recover = payload['action'] == 'platform_runtime_recover'
             if old and old['state'] in BUSY and not (recover and self.interrupted(old)):
-                raise ValueError('Runtime operation is still running')
+                raise RuntimeNotAccepted('Runtime operation is still running')
             if old and old['state'] == 'recovery_required' and not recover:
-                raise ValueError('Explicit Runtime recovery required')
+                raise RuntimeNotAccepted('Explicit Runtime recovery required')
             if not recover and self.pending_transaction():
-                raise ValueError('An interrupted Runtime transaction requires explicit recovery')
+                raise RuntimeNotAccepted('An interrupted Runtime transaction requires explicit recovery')
             if recover and not (self.pending_transaction() or old and (old['state'] == 'recovery_required' or self.interrupted(old))):
-                raise ValueError('No Runtime operation to recover')
+                raise RuntimeNotAccepted('No Runtime operation to recover')
             with self.mutation_lock():
                 core = self.fingerprint()
                 source = self.source.resolve(strict=True)
                 self.secure(source, directory=True)
                 if core['release'] != str(source):
-                    raise ValueError('Core source changed')
+                    raise RuntimeNotAccepted('Core source changed')
                 current = self.pointer('current')
                 if current is None:
-                    raise ValueError('Runtime bootstrap is outside this workflow')
+                    raise RuntimeNotAccepted('Runtime bootstrap is outside this workflow')
                 if not recover and not self.control.active():
-                    raise ValueError('Runtime must already be active')
+                    raise RuntimeNotAccepted('Runtime must already be active')
                 if payload['action'] == 'platform_runtime_apply':
-                    self.check_candidate(payload, core, current)
+                    try:
+                        self.check_candidate(payload, core, current)
+                    except ValueError as exc:
+                        raise RuntimeNotAccepted('Runtime candidate is no longer eligible') from exc
                 operation = {**payload, 'core': core, 'source': str(source),
                     'current_build_id': current, 'request_digest': digest}
-                operation = self.save_operation(operation, 'queued')
+                operation = self._new_queue_record(operation, old)
         # A Type=exec worker may already be running before the scheduler returns.
         # The durable queued identity, not this lock, prevents a second dispatch.
         try:

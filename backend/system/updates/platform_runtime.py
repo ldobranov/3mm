@@ -1,10 +1,14 @@
 """Public, bounded Runtime update DTOs; privileged state stays in the root helper."""
-from typing import Literal
+from typing import Annotated, Literal
+from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 
 class RuntimeModel(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
+
+
+ReceiptId = Annotated[str | None, Query(min_length=32, max_length=32, pattern=r'^[0-9a-f]{32}$')]
 
 
 class RuntimeOperation(RuntimeModel):
@@ -34,6 +38,7 @@ class RuntimeUpdateStatus(RuntimeModel):
     reason: Literal['runtime_unavailable', 'core_unavailable'] | None
     candidate: RuntimeCandidate | None
     operation: RuntimeOperation | None
+    requested_receipt: RuntimeOperation | None = None
 
 
 class RuntimePrepareRequest(RuntimeModel):

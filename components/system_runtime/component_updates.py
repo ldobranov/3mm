@@ -52,6 +52,10 @@ def validate_request(payload):
     fields = {'action', 'component', 'target_id', 'requested_by_user_id'}
     validate_target(payload.get('component'), payload.get('target_id'))
     action = payload['action'].removeprefix('component_')
+    if action == 'status' and 'receipt_id' in payload:
+        fields.add('receipt_id')
+        if type(payload['receipt_id']) is not str or not HEX32.fullmatch(payload['receipt_id']):
+            raise ValueError('Invalid component receipt lookup')
     if action != 'status': fields |= {'request_id', 'expected_operation_id'}
     if action in {'apply', 'rollback'}: fields |= {'build_id', 'confirmation'}
     if action == 'apply': fields.add('candidate_id')
@@ -222,6 +226,7 @@ Path(output).write_bytes(blob)
 
 
 class ComponentUpdates(RuntimeUpdates):
+    receipt_fields = (*RuntimeUpdates.receipt_fields, 'component', 'target_id')
     """Reuse Runtime's bounded secure journal I/O, never its Runtime mutation path."""
     def __init__(self, *, source=Path('/opt/3mm/current'), state=STATE, database=DATABASE,
                  adapter_factory=None, actor_revision=None, **kwargs):
@@ -232,7 +237,7 @@ class ComponentUpdates(RuntimeUpdates):
     def adapter(self, payload):
         return self.adapter_factory(payload['component'], payload['target_id'])
 
-    def status(self, component, target_id):
+    def status(self, component, target_id, *, receipt_id=None, actor_id=None):
         validate_target(component, target_id)
         current = previous = None
         ready = False
@@ -254,8 +259,7 @@ class ComponentUpdates(RuntimeUpdates):
                 and candidate['core'] == self.fingerprint() and candidate['binding'] == adapter.fingerprint())
         except (OSError, ValueError, KeyError, RuntimeError, UnboundLocalError, sqlite3.Error, subprocess.SubprocessError):
             pass
-        public_operation = None if operation is None else {k: operation[k] for k in
-            ('request_id', 'component', 'target_id', 'action', 'state', 'reason', 'updated_at')}
+        public_operation = None if operation is None else {k: operation[k] for k in self.receipt_fields}
         if interrupted: public_operation.update(state='recovery_required', reason='worker_interrupted')
         public_candidate = None
         if candidate and candidate['component'] == component and candidate['target_id'] == target_id:
@@ -263,6 +267,7 @@ class ComponentUpdates(RuntimeUpdates):
             public_candidate['compatible'] = compatible
         return {'component': component, 'target_id': target_id, 'current_build_id': current,
             'previous_build_id': previous, 'ready': ready, 'candidate': public_candidate, 'operation': public_operation,
+            **self._requested_receipt(operation, receipt_id, actor_id, target=(component, target_id)),
             'recovery_required': bool(interrupted or operation and operation['state'] == 'recovery_required'
                 or pending and not (operation and operation['state'] in BUSY and not interrupted))}
 
@@ -278,25 +283,28 @@ class ComponentUpdates(RuntimeUpdates):
     def queue(self, payload, scheduler):
         validate_request(payload)
         with self.locked():
+            # A previous acceptance under this ID is not a negative receipt.
+            # If the journal cannot be read, its acceptance is also unknown.
+            old = self.operation()
+            digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+            if old and old['request_id'] == payload['request_id']:
+                if old['request_digest'] != digest: raise ValueError('Component request conflict')
+                return old
+            if any(row['request_id'] == payload['request_id'] for row in self._prior(old)):
+                raise ValueError('Previously accepted component request; read its receipt')
             # Classification ends BEFORE durable acceptance. Persistence errors
             # and lost scheduler replies must remain unconfirmed, not refusals.
             try:
-                record = self._preflight(payload)
+                record = self._preflight(payload, old, digest)
             except (OSError, ValueError, KeyError, RuntimeError, sqlite3.Error, subprocess.SubprocessError):
                 raise ComponentNotAccepted('Component state changed or preparation is unavailable; refresh and review') from None
-            if record.get('state') is not None: return record  # Exact accepted identity, never reschedule.
-            operation = self.save_operation(record, 'queued')
+            operation = self._new_queue_record(record, old)
         # Start only after releasing the lock needed by that same worker.
         try: scheduler(operation['request_id'])
         except Exception: raise RuntimeError('Component scheduling outcome is unconfirmed') from None
         return operation
 
-    def _preflight(self, payload):
-        old = self.operation()
-        digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
-        if old and old['request_id'] == payload['request_id']:
-            if old['request_digest'] != digest: raise ValueError('Component request conflict')
-            return old  # An accepted request is never scheduled twice.
+    def _preflight(self, payload, old, digest):
         if payload['expected_operation_id'] != (old['request_id'] if old else None):
             raise ValueError('Component operation changed; refresh')
         recover = payload['action'] == 'component_recover'

@@ -4,6 +4,7 @@ import { UiButton, UiField } from '@/extension-ui/v1'
 import UiDialog from '@/components/ui/UiDialog.vue'
 import http from '@/utils/dynamic-http'
 import { useI18n } from '@/utils/i18n'
+import { isUpdateRefusal } from '@/utils/update-receipt'
 
 const props = withDefaults(defineProps<{ maintenanceOverrideRequired?: boolean }>(), { maintenanceOverrideRequired: false })
 const { t } = useI18n(), prefix = useId()
@@ -12,11 +13,12 @@ type Target = { component: 'agent' | 'application_host'; target_id: string; labe
 type Candidate = { candidate_id: string; build_id: string; sha256: string; bytes: number; compatible: boolean }
 type Operation = { request_id: string; component: Target['component']; target_id: string; state: string; reason: string | null }
 type Status = { component: Target['component']; target_id: string; current_build_id: string | null; previous_build_id: string | null;
-  ready: boolean; recovery_required: boolean; candidate: Candidate | null; operation: Operation | null }
+  ready: boolean; recovery_required: boolean; candidate: Candidate | null; operation: Operation | null; requested_receipt?: Operation | null }
 type Action = 'apply' | 'rollback' | 'recover'
 const base = '/api/v1/system-updates/components', storage = '3mm-component-update-pending'
 const targets = ref<Target[]>([]), selection = ref(''), status = ref<Status | null>(null)
 const loading = ref(false), sending = ref(false), error = ref(''), unknown = ref(false), requestId = ref('')
+const earlierResult = ref<Operation | null>(null)
 const dialog = ref<Action | null>(null), acknowledged = ref(false), override = ref(false), invalidated = ref(false)
 const reviewed = ref<{ build: string | null; sha: string | null; candidate: string | null; operation: string | null; current: string | null } | null>(null)
 const busyStates = ['queued', 'preparing', 'applying', 'recovering']
@@ -34,8 +36,15 @@ const reviewCurrent = computed(() => !invalidated.value && !!reviewed.value && r
   && (dialog.value !== 'apply' || reviewed.value.candidate === status.value?.candidate?.candidate_id && reviewed.value.sha === status.value?.candidate?.sha256 && reviewed.value.build === status.value?.candidate?.build_id)
   && (dialog.value !== 'rollback' || reviewed.value.build === status.value?.previous_build_id))
 let live = true, generation = 0, polls = 0, timer: ReturnType<typeof setTimeout> | null = null
+let awaitingResult = false
 const hash = (v: unknown, length = 64) => typeof v === 'string' && new RegExp('^[0-9a-f]{' + length + '}$').test(v)
 function validTarget(v: Pick<Target, 'component' | 'target_id'>) { return !!v && (v.component === 'agent' && v.target_id === 'local' || v.component === 'application_host' && hash(v.target_id, 24)) }
+function forgetPending(id: string, target: string) {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(storage) || 'null')
+    if (saved?.request_id === id && saved.target === target) sessionStorage.removeItem(storage)
+  } catch { /* An observation can still be displayed when storage is unavailable. */ }
+}
 function decode(value: unknown, target: Target): Status {
   const s = value as Status
   if (!s || key(s) !== key(target) || typeof s.ready !== 'boolean' || typeof s.recovery_required !== 'boolean'
@@ -56,17 +65,32 @@ async function refresh() {
   const target = { ...selected.value }, currentGeneration = generation
   loading.value = true
   try {
-    const result = await http.get(base + '/' + key(target))
+    const lookup = awaitingResult ? requestId.value : ''
+    const url = base + '/' + key(target)
+    const result = lookup ? await http.get(url, { params: { receipt_id: lookup } }) : await http.get(url)
     if (!live || currentGeneration !== generation) return
     status.value = decode(result.data, target); error.value = ''
-    if (requestId.value && status.value.operation?.request_id === requestId.value) {
+    if (awaitingResult && status.value.operation?.request_id === requestId.value && key(status.value.operation) === key(target)) {
       unknown.value = false
-      if (!busyStates.includes(status.value.operation.state)) sessionStorage.removeItem(storage)
+      awaitingResult = busyStates.includes(status.value.operation.state)
+      if (!awaitingResult) forgetPending(requestId.value, key(target))
+    } else if (awaitingResult) {
+      const receipt = status.value.requested_receipt
+      if (receipt && receipt.request_id === lookup && key(receipt) === key(target)
+          && ['succeeded', 'failed', 'recovery_required'].includes(receipt.state)) {
+        earlierResult.value = receipt; unknown.value = awaitingResult = false; forgetPending(lookup, key(target))
+      } else unknown.value = true
     }
     if (dialog.value && !sending.value && (!reviewCurrent.value || !eligible.value)) {
       invalidated.value = true; acknowledged.value = false; override.value = false
     }
-  } catch { if (live && currentGeneration === generation) error.value = text('unavailable', 'Component status is unavailable. Other administration remains available.') }
+  } catch {
+    if (live && currentGeneration === generation) {
+      status.value = null; unknown.value = awaitingResult
+      if (dialog.value) { invalidated.value = true; acknowledged.value = false; override.value = false }
+      error.value = text('unavailable', 'Component status is unavailable. Other administration remains available.')
+    }
+  }
   finally { loading.value = false; schedule() }
 }
 async function load() {
@@ -77,9 +101,8 @@ async function load() {
     const items = result.data.targets as Target[]
     if (!Array.isArray(items) || items.length > 129 || items.some(v => !validTarget(v) || typeof v.label !== 'string')) throw new Error()
     targets.value = items
-    const pending = JSON.parse(sessionStorage.getItem(storage) || 'null')
-    if (pending && hash(pending.request_id, 32) && items.some(v => key(v) === pending.target)) {
-      selection.value = pending.target; requestId.value = pending.request_id; unknown.value = true
+    if (unknown.value && requestId.value) {
+      if (!selected.value) error.value = text('targetMissing', 'The original target is not currently listed. Keep the request ID and refresh; no new request was sent.')
     } else selection.value = items[0] ? key(items[0]) : ''
   } catch { if (live) error.value = text('unavailable', 'Component status is unavailable. Other administration remains available.') }
   finally { loading.value = false; if (live) await refresh() }
@@ -87,6 +110,7 @@ async function load() {
 async function changeTarget(value: unknown) {
   if (busy.value || unknown.value || loading.value) return
   selection.value = String(value); generation++; status.value = null; requestId.value = ''; dialog.value = null; polls = 0
+  earlierResult.value = null
   await refresh()
 }
 function review(action: Action) {
@@ -97,7 +121,7 @@ function review(action: Action) {
   dialog.value = action
 }
 async function submit(action: Action | 'prepare') {
-  if (!selected.value || !status.value || sending.value || unknown.value || action === 'prepare' && !idle.value) return
+  if (loading.value || !selected.value || !status.value || sending.value || unknown.value || action === 'prepare' && !idle.value) return
   if (action !== 'prepare' && (dialog.value !== action || !eligible.value || !reviewCurrent.value || !acknowledged.value
       || action !== 'recover' && props.maintenanceOverrideRequired && !override.value)) return
   let dispatched = false, refused = false
@@ -105,6 +129,7 @@ async function submit(action: Action | 'prepare') {
   try {
     requestId.value = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('')
     sessionStorage.setItem(storage, JSON.stringify({ target: selection.value, request_id: requestId.value }))
+    earlierResult.value = null
     const payload: Record<string, unknown> = { request_id: requestId.value,
       expected_operation_id: status.value.operation?.request_id ?? null }
     if (action === 'apply' || action === 'rollback') {
@@ -114,16 +139,16 @@ async function submit(action: Action | 'prepare') {
         maintenance_override: props.maintenanceOverrideRequired && override.value })
       if (action === 'apply') payload.candidate_id = reviewed.value!.candidate
     }
-    dispatched = true; unknown.value = true
+    dispatched = awaitingResult = true; unknown.value = true
     const result = await http.post(base + '/' + selection.value + '/' + action, payload)
     if (result.data.request_id !== requestId.value) throw new Error('Unconfirmed identity')
     if (live) dialog.value = null
   } catch (failure) {
-    refused = (failure as { response?: { data?: { detail?: { code?: string } } } })?.response?.data?.detail?.code === 'component_update_not_accepted'
-    if (live) error.value = refused ? text('refused', 'Not accepted; no update was scheduled. Refresh and review the current state.')
-      : text('unconfirmed', 'Outcome unconfirmed. Preserve the request ID and read status; do not resend.')
+    refused = dispatched && isUpdateRefusal(failure, 'component_update_not_accepted', requestId.value)
+    if (live && !dispatched) error.value = text('notSent', 'No request was sent. The browser could not save a request ID for this tab.')
     if (!dispatched || refused) {
-      unknown.value = false; sessionStorage.removeItem(storage)
+      unknown.value = false
+      if (refused) { awaitingResult = false; forgetPending(requestId.value, selection.value) }
       invalidated.value = true; acknowledged.value = false; override.value = false
     }
   } finally {
@@ -142,7 +167,16 @@ function reason(code: string | null) {
   }
   return code ? text('reason.' + code, messages[code] || code) : ''
 }
-onMounted(() => { void load() })
+onMounted(() => {
+  try {
+    const pending = JSON.parse(sessionStorage.getItem(storage) || 'null')
+    if (pending && hash(pending.request_id, 32) && typeof pending.target === 'string'
+      && /^(agent\/local|application_host\/[0-9a-f]{24})$/.test(pending.target)) {
+      selection.value = pending.target; requestId.value = pending.request_id; awaitingResult = unknown.value = true
+    }
+  } catch { /* Reads do not need storage; storing the ID is mandatory before submitting. */ }
+  void load()
+})
 onUnmounted(() => { live = false; generation++; if (timer) clearTimeout(timer) })
 </script>
 
@@ -150,7 +184,7 @@ onUnmounted(() => { live = false; generation++; if (timer) clearTimeout(timer) }
   <section class="component-updates card ui-v2" :aria-labelledby="prefix + '-title'">
     <header><div><h2 :id="prefix + '-title'">{{ text('title', 'Agent and application hosts') }}</h2>
       <p>{{ text('help', 'Prepare from this installed Core, then separately approve an exact component build. No downloads or dependency installation.') }}</p></div>
-      <UiButton :disabled="loading || sending" @click="targets.length ? refresh() : load()">{{ text('refresh', 'Refresh status') }}</UiButton></header>
+      <UiButton :disabled="loading || sending" @click="selected ? refresh() : load()">{{ text('refresh', 'Refresh status') }}</UiButton></header>
     <UiField :id="prefix + '-target'" type="select" :model-value="selection" :disabled="loading || busy || unknown"
       :label="text('target', 'Component to manage')" :options="targets.map(item => ({ value: key(item), label: item.component === 'agent' ? text('agent', 'Local Agent') : item.label }))"
       @update:model-value="changeTarget" />
@@ -159,21 +193,24 @@ onUnmounted(() => { live = false; generation++; if (timer) clearTimeout(timer) }
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="unknown" role="alert">{{ text('unconfirmed', 'Outcome unconfirmed. Preserve the request ID and read status; do not resend.') }}</p>
     <p v-if="requestId">{{ text('requestId', 'Preserve request ID:') }} <code>{{ requestId }}</code></p>
+    <p v-if="earlierResult" role="status">{{ text('earlierResult', 'Result for your earlier request:') }}
+      {{ t('runtimeUpdates.state.' + earlierResult.state, earlierResult.state) }} · {{ reason(earlierResult.reason) }}</p>
     <template v-if="status">
       <dl><dt>{{ text('current', 'Current build') }}</dt><dd><code>{{ status.current_build_id || '—' }}</code></dd>
         <dt>{{ text('previous', 'Previous build') }}</dt><dd><code>{{ status.previous_build_id || '—' }}</code></dd>
         <dt>{{ text('health', 'Live readiness') }}</dt><dd>{{ status.ready ? text('ready', 'Ready') : text('notReady', 'Not confirmed') }}</dd></dl>
       <p v-if="status.operation" role="status"><code>{{ status.operation.component }} / {{ status.operation.target_id }}</code> ·
+        <code v-if="requestId && requestId !== status.operation.request_id">{{ status.operation.request_id }} · </code>
         {{ t('runtimeUpdates.state.' + status.operation.state, status.operation.state) }} · {{ reason(status.operation.reason) }}</p>
       <div v-if="status.candidate" class="candidate"><h3>{{ text('candidate', 'Prepared candidate') }}</h3>
         <code>{{ status.candidate.build_id }}</code><p>SHA-256: <code>{{ status.candidate.sha256 }}</code></p>
         <p v-if="status.candidate.build_id === status.current_build_id">{{ text('same', 'This build is already selected. No update is needed.') }}</p>
         <p v-else-if="!status.candidate.compatible">{{ text('stale', 'The reviewed component or Core changed. Prepare a fresh candidate.') }}</p></div>
       <div class="actions">
-        <UiButton :disabled="!idle" @click="submit('prepare')">{{ text('prepare', 'Prepare from installed Core') }}</UiButton>
-        <UiButton variant="primary" :disabled="!canApply" @click="review('apply')">{{ text('update', 'Review update') }}</UiButton>
-        <UiButton :disabled="!canRollback" @click="review('rollback')">{{ text('rollback', 'Review previous build') }}</UiButton>
-        <UiButton v-if="status.recovery_required" :disabled="!canRecover" @click="review('recover')">{{ text('recover', 'Review interrupted-operation recovery') }}</UiButton>
+        <UiButton :disabled="loading || !idle" @click="submit('prepare')">{{ text('prepare', 'Prepare from installed Core') }}</UiButton>
+        <UiButton variant="primary" :disabled="loading || !canApply" @click="review('apply')">{{ text('update', 'Review update') }}</UiButton>
+        <UiButton :disabled="loading || !canRollback" @click="review('rollback')">{{ text('rollback', 'Review previous build') }}</UiButton>
+        <UiButton v-if="status.recovery_required" :disabled="loading || !canRecover" @click="review('recover')">{{ text('recover', 'Review interrupted-operation recovery') }}</UiButton>
       </div>
     </template>
     <p v-else-if="loading" role="status">{{ text('loading', 'Reading selected component…') }}</p>
@@ -186,7 +223,7 @@ onUnmounted(() => { live = false; generation++; if (timer) clearTimeout(timer) }
       <label class="check"><input v-model="acknowledged" type="checkbox" :disabled="sending">{{ text('acknowledge', 'I reviewed this exact target, build and temporary interruption.') }}</label>
       <label v-if="dialog !== 'recover' && maintenanceOverrideRequired" class="check"><input v-model="override" type="checkbox" :disabled="sending">{{ text('override', 'I explicitly approve switching outside the maintenance window.') }}</label>
       <template #actions><UiButton :disabled="sending" @click="dialog = null">{{ text('close', 'Close') }}</UiButton>
-        <UiButton variant="primary" :disabled="sending || !acknowledged || !reviewCurrent || !eligible || dialog !== 'recover' && maintenanceOverrideRequired && !override"
+        <UiButton variant="primary" :disabled="loading || sending || !acknowledged || !reviewCurrent || !eligible || dialog !== 'recover' && maintenanceOverrideRequired && !override"
           @click="dialog && submit(dialog)">{{ text('confirm', 'Confirm once') }}</UiButton></template>
     </UiDialog>
   </section>

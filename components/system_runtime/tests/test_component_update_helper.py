@@ -64,7 +64,7 @@ def test_root_preflight_refusal_and_client_negative_ack_remain_distinct(tmp_path
     monkeypatch.setattr(hardware_interfaces,'admin_revision',lambda *a:1)
     payload=dict(action='component_prepare',component='agent',target_id='local',requested_by_user_id=1,request_id='a'*32,expected_operation_id=None)
     result=update_helper._handle_request(payload,stage_root=tmp_path/'stage',state_root=tmp_path/'state',allowlist=tmp_path/'allow',status_file=tmp_path/'status',relational_peer_uid=1000)
-    assert result=={'ok':False,'error':'component_update_not_accepted'}
+    assert result=={'ok':False,'error':'component_update_not_accepted','request_id':payload['request_id']}
     class ReplySocket:
         def __init__(self,*a):pass
         def __enter__(self):return self
@@ -75,3 +75,9 @@ def test_root_preflight_refusal_and_client_negative_ack_remain_distinct(tmp_path
         def recv(self,*a):return json.dumps(result).encode()+b'\n'
     monkeypatch.setattr(socket,'socket',ReplySocket)
     with pytest.raises(ComponentUpdateNotAccepted):UpdateHelperClient('/unused').component_operation(payload)
+    result['request_id']='b'*32
+    with pytest.raises(UpdateHelperError) as mismatch:UpdateHelperClient('/unused').component_operation(payload)
+    assert not isinstance(mismatch.value,ComponentUpdateNotAccepted)
+    del result['request_id']
+    with pytest.raises(UpdateHelperError) as missing:UpdateHelperClient('/unused').component_operation(payload)
+    assert not isinstance(missing.value,ComponentUpdateNotAccepted)

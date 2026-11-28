@@ -34,6 +34,7 @@ class ComponentUpdateStatus(RuntimeModel):
     recovery_required: StrictBool
     candidate: ComponentCandidate | None
     operation: ComponentOperation | None
+    requested_receipt: ComponentOperation | None = None
 
 
 class ComponentPrepareRequest(RuntimeModel):
