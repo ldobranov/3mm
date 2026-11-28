@@ -726,27 +726,65 @@ def test_real_delayed_result_progress_restart_and_no_replay(task_state):
 
 
 def test_lost_admission_reply_uses_original_lookup_only(task_state, monkeypatch):
+    from backend.tests.task_progress_timing import WorkerTimeline, observe_progress
+
     s = task_state
+    key = identity()
     original = s.server._send_encoded
-    dropped = []
+    observed = []
     def send(connection, encoded):
-        if not dropped and b'"status":"queued"' in encoded:
-            dropped.append(True)
-            return
+        envelope = json.loads(encoded)
+        result = envelope.get("result")
+        if isinstance(result, dict) and result.get("request_id") == key and result.get("task_id") == "calculate":
+            observed.append(result.get("status"))
+            if len(observed) == 1:
+                return  # Lose this admission reply only, not any later lookup.
         return original(connection, encoded)
     monkeypatch.setattr(s.server, "_send_encoded", send)
-    key = identity()
-    with pytest.raises(ApplicationPlatformError): schedule(s, request_id=key, delay=0)
-    assert dropped and s.task_probe.lookup(key)["status"] == "queued"
+    try:
+        _, received = schedule(s, request_id=key, delay=0)
+    except ApplicationPlatformError:
+        pass
+    else:
+        pytest.fail(f"Admission reply reached the client: status={received.get('status')}, observed={observed}")
+    assert observed == ["queued"], f"Original admission was not observed as queued: {observed}"
+    assert s.task_probe.lookup(key)["status"] == "queued"
     with Session(s.engine) as db: assert db.scalar(select(func.count()).select_from(Run)) == 1
 
     # Drive one real worker exchange after observing the original queued row.
     # This scenario tests lost-reply recovery, not cold process startup within
     # the task deadline. Other cases in this suite exercise the packaged worker.
     worker = TaskWorker(s.server.socket_path, core_uid=os.geteuid())
-    assert worker.run_once(), "Worker did not claim the original queued task"
+    timeline = WorkerTimeline()
+    for stage in ("claim_task", "dispatch_task", "start_task", "progress_task", "finish_task"):
+        monkeypatch.setattr(tasks, stage, timeline.track(
+            getattr(tasks, stage), stage + "_received", stage + "_returned"))
+    original_invoke = worker.invoke
+    phases = iter(("metadata", "handler"))
+    interrupted_at = None
+
+    def observed_invoke(plan):
+        nonlocal interrupted_at
+        stage = next(phases, "unexpected_invocation")
+        sent_at = time.monotonic()
+        try:
+            return timeline.track(original_invoke, stage + "_sent", stage + "_replied")(plan)
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            # Completion can wait on the same writer. Inspect the active phase
+            # now, before that wait finishes and erases evidence of the delay.
+            budget = plan.get("timeout_seconds")
+            interrupted_at = dict(stage=stage, error=type(exc).__name__,
+                offered_ms=round(budget * 1000) if type(budget) in (int, float) else None,
+                wait_ms=round((time.monotonic() - sent_at) * 1000), trace=timeline.snapshot())
+            raise
+
+    monkeypatch.setattr(worker, "invoke", observed_invoke)
+    with monkeypatch.context() as patch, observe_progress(patch, s.engine, {}, timeline):
+        assert worker.run_once(), "Worker did not claim the original queued task"
     result = s.task_probe.lookup(key)
-    assert result["status"] == "succeeded", result
+    assert result["status"] == "succeeded", (
+        f"Original task: status={result['status']}, error={result.get('error_code')}, "
+        f"progress={result.get('progress')}, interrupted_at={interrupted_at}, worker_trace={timeline.snapshot()}")
     assert result["result"] == {"total": 5050}
     assert not worker.run_once() and attempts(s) == 1
 
