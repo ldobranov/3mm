@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+import gc
 import json
 import socket
 import threading
@@ -557,6 +558,8 @@ def test_lifecycle_waiter_rejects_changed_guard_after_other_connection_commits(l
             done.set()
 
     thread = threading.Thread(target=disable, name="lifecycle-waiter")
+    # Collect cycles left by earlier tests before taking the lock and timing the waiter.
+    gc.collect()
     event.listen(s.engine, "before_cursor_execute", capture)
     try:
         with Session(s.engine) as db:
