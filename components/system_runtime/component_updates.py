@@ -286,9 +286,10 @@ class ComponentUpdates(RuntimeUpdates):
                 raise ComponentNotAccepted('Component state changed or preparation is unavailable; refresh and review') from None
             if record.get('state') is not None: return record  # Exact accepted identity, never reschedule.
             operation = self.save_operation(record, 'queued')
-            try: scheduler(operation['request_id'])
-            except Exception: raise RuntimeError('Component scheduling outcome is unconfirmed') from None
-            return operation
+        # Start only after releasing the lock needed by that same worker.
+        try: scheduler(operation['request_id'])
+        except Exception: raise RuntimeError('Component scheduling outcome is unconfirmed') from None
+        return operation
 
     def _preflight(self, payload):
         old = self.operation()

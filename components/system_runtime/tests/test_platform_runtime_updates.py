@@ -109,6 +109,18 @@ def test_exact_request_is_not_rescheduled_after_lost_scheduler_reply(workflow):
         workflow.w.queue({**request(), 'requested_by_user_id': 8}, lost)
 
 
+def test_worker_can_finish_preparation_before_scheduler_returns(workflow):
+    calls = []
+    def schedule(identifier):
+        calls.append(identifier)
+        workflow.w.execute(identifier)
+    intent = request()
+    receipt = workflow.w.queue(intent, schedule)
+    assert receipt['request_id'] == intent['request_id']
+    assert workflow.w.queue(intent, schedule)['reason'] == 'candidate_prepared'
+    assert calls == [intent['request_id']] and not workflow.control.calls
+
+
 @pytest.mark.parametrize('fault', ['core-generation', 'runtime-pointer', 'candidate-id', 'confirmation'])
 def test_drift_or_changed_confirmation_cannot_switch_runtime(workflow, fault):
     x = workflow; candidate = prepare(x)

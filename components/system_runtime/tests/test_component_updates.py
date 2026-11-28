@@ -89,6 +89,18 @@ def test_status_and_prepare_do_not_switch_or_create_status_journals(workflow):
     assert x.w.status(x.component, x.target)['candidate']['compatible']
 
 
+def test_worker_can_finish_preparation_before_scheduler_returns(workflow):
+    calls = []
+    def schedule(identifier):
+        calls.append(identifier)
+        workflow.w.execute(identifier)
+    intent = workflow.payload()
+    receipt = workflow.w.queue(intent, schedule)
+    assert receipt['request_id'] == intent['request_id']
+    assert workflow.w.queue(intent, schedule)['state'] == 'succeeded'
+    assert calls == [intent['request_id']] and not workflow.adapter.calls and not workflow.other.calls
+
+
 def test_exact_update_then_explicit_previous_build_rollback(workflow):
     x = workflow; old = x.adapter.pointer('current'); other = x.other.pointer('current'); core = dict(x.core)
     candidate = x.prepare()

@@ -244,13 +244,13 @@ class RuntimeUpdates:
                 operation = {**payload, 'core': core, 'source': str(source),
                     'current_build_id': current, 'request_digest': digest}
                 operation = self.save_operation(operation, 'queued')
-            try:
-                scheduler(operation['request_id'])
-            except Exception:
-                # The scheduler's reply can be lost AFTER systemd accepted work.
-                # Preserve the queued identity; never manufacture a retry permission.
-                raise RuntimeError('Runtime scheduling outcome is unconfirmed') from None
-            return operation
+        # A Type=exec worker may already be running before the scheduler returns.
+        # The durable queued identity, not this lock, prevents a second dispatch.
+        try:
+            scheduler(operation['request_id'])
+        except Exception:
+            raise RuntimeError('Runtime scheduling outcome is unconfirmed') from None
+        return operation
 
     def check_candidate(self, payload, core, current):
         candidate = self.candidate()
